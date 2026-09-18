@@ -159,3 +159,68 @@ def test_uploaded_nested_zip_decodes_and_preserves_native_counts(tmp_path,compre
     np.testing.assert_allclose(a.counts[:,0],[1,2,3])
     np.testing.assert_allclose(a.end,[.000002,.000004,.000006])
     np.testing.assert_allclose(rebin(a,empty_windows(),1).counts[:,0],[6])
+
+
+def test_trigger_offset_moves_windows_not_data_or_coordinates():
+    from core import trigger_windows
+    a=sample(30)
+    a.transit=.001
+    a.pulses=np.array([.005,.006,.007,.015,.016,.017])
+    a.candidates=[{'na':name,'lt':4,'ns':3,'sx':x,'sy':2,'sz':3,'Metadata':{'RepRate':1000}} for name,x in [('a',1),('b',4)]]
+    w,_=trigger_windows(a,'g',0)
+    moved,_=trigger_windows(a,'g',.002)
+    np.testing.assert_allclose(moved.start_s-w.start_s,.002)
+    np.testing.assert_allclose(moved.end_s-w.end_s,.002)
+    np.testing.assert_array_equal(moved.x_um,w.x_um)
+    np.testing.assert_allclose(rebin(a,moved,2).counts.sum(0),a.counts.sum(0))
+
+
+def test_missing_single_shot_is_not_assigned_wrong_coordinates():
+    from core import trigger_windows
+    a=sample(30);a.transit=0;a.pulses=np.array([.005,.006,.007])
+    a.candidates=[{'na':name,'lt':4,'ns':0,'sx':x,'sy':2,'sz':3,'Metadata':{'RepRate':1000}} for name,x in [('spot-1',1),('spot-4',4)]]
+    w,notes=trigger_windows(a,'g')
+    assert w.name.tolist()==['spot-4']
+    assert w.x_um.tolist()==[4]
+    assert any('No recorded trigger for: spot-1' in note for note in notes)
+
+
+def test_spatial_cells_merge_visits_across_acquisitions_without_gap_exposure():
+    from spatial import SpatialGrid
+    g=SpatialGrid(5,5)
+    g.add([[10,20],[30,40],[50,60]],[1,2,1],[[1,1,0],[4.9,4.9,0],[5,1,0]],['a','b','c'],'first',[0,20,30],[1,22,31])
+    g.add([[7,8]],[.5],[[2,2,0]],['a'],'second',[100],[100.5])
+    assert len(g.cells)==2
+    np.testing.assert_array_equal(g.cells[(0,0)]['counts'],[47,68])
+    assert g.cells[(0,0)]['exposure']==3.5
+    assert g.cells[(0,0)]['names']==['a','b']
+    assert g.table().iloc[0].x_um==2.5
+    np.testing.assert_array_equal(g.assigned_counts,[97,128])
+
+
+def test_spatial_origin_negative_boundaries_and_dimension_validation():
+    from spatial import SpatialGrid
+    g=SpatialGrid(5,10,1,2)
+    g.add([[1],[2],[3]],[1,1,1],[[.9,2,0],[1,2,0],[6,12,0]],['a','b','c'],'g',[0,1,2],[1,2,3])
+    assert set(g.cells)=={(-1,0),(0,0),(1,1)}
+    with pytest.raises(DataError):SpatialGrid(0,5)
+
+
+def test_spatial_v7_export_counts_exposure_and_metadata(tmp_path):
+    from spatial import SpatialGrid
+    a=sample(11)
+    a.candidates=[{'na':'a','ss':35,'sp':7,'ns':1,'Metadata':{'RepRate':10,'Fluence':6}}]
+    w=windows(['g','a','signal',0,.003,1,1,0],['g','a','signal',.007,.011,4,4,0])
+    g=SpatialGrid(5,5);g.add_acquisition(a,'g',w)
+    t=(HERE/'v7_template.csv').read_text();_,cols=template_lines(t)
+    p,d,m=g.export(t,propose_mapping(cols,a.mz),'America/Los_Angeles',tmp_path)
+    assert m['pixels']==1
+    assert 'NOT original' in m['time_axis']
+    with zipfile.ZipFile(p) as z:
+        rows=list(csv.reader(io.StringIO(z.read(z.namelist()[0]).decode())))
+        assert rows[14]==next(csv.reader([t.splitlines()[14]]))
+        assert len(rows)==17 # one measurement plus a missing-value end boundary
+        assert rows[15][1:3]==['2.5','2.5']
+        counts=a.counts[:3].sum(0)+a.counts[7:].sum(0)
+        assert float(rows[15][cols.index('28Si cps')])==pytest.approx(counts[0]/.007)
+    assert len(a.candidates)==1

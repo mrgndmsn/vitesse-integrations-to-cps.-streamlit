@@ -228,6 +228,59 @@ def empty_windows():
     return pd.DataFrame({k:pd.Series(dtype='float64' if k.endswith(('_s','_um')) else 'str') for k in WINDOW_COLUMNS})
 
 
+def trigger_windows(acq, key, offset_s=0.0):
+    """Associate ordered pulse trains with stationary spots; never invent absent triggers.
+
+    Name suffixes provide an explicitly reported fallback for this acquisition's
+    zero shot-count metadata. Ambiguous associations retain data as unassigned.
+    """
+    import itertools
+    if not math.isfinite(offset_s):
+        raise DataError('Trigger offset must be finite.')
+    spots=acq.candidates
+    if not spots or not len(acq.pulses):
+        return empty_windows(), ['No usable spot metadata or recorded triggers; all signal retained as unassigned.']
+    if any(s.get('lt')!=4 for s in spots):
+        raise DataError('Automatic coordinate assignment currently supports stationary spots only.')
+    rates=[float(s.get('Metadata',{}).get('RepRate',0)) for s in spots]
+    if any(not math.isfinite(r) or r<=0 for r in rates):
+        raise DataError('Recorded spot repetition rates are missing or invalid.')
+    pulses=acq.pulses
+    trains=np.split(pulses,np.flatnonzero(np.diff(pulses)>2.5/min(rates))+1)
+    notes=[]
+    if len(trains)==len(spots):
+        assignment=tuple(range(len(spots)))
+    else:
+        expected=[]
+        for s in spots:
+            n=int(s.get('ns',0))
+            match=re.search(r'-(\d+)(?:\(\d+\))?$',s['na'])
+            expected.append(n if n>0 else int(match[1]) if match else None)
+        possible=[ids for ids in itertools.combinations(range(len(spots)),len(trains))
+                  if all(expected[i] is not None and len(t) in (expected[i],expected[i]-1)
+                         for t,i in zip(trains,ids))]
+        if len(possible)!=1:
+            return empty_windows(), ['Trigger trains cannot be uniquely linked to recorded spot names; signal retained as unassigned.']
+        assignment=possible[0]
+        notes.append('Spot association inferred from ordered trigger counts and shot-count name suffixes because raw shot counts are zero; verify labels against the preview.')
+    rows=[]
+    for train,i in zip(trains,assignment):
+        s=spots[i];period=1/rates[i]
+        # Cover the recorded train through one repetition period after its last trigger.
+        start=float(train[0]+acq.transit+offset_s)
+        end=float(train[-1]+period+acq.transit+offset_s)
+        lo=max(start,float(acq.start[0]));hi=min(end,float(acq.end[-1]))
+        if hi<=lo:
+            raise DataError(f"Offset moves {s['na']} outside the acquisition.")
+        if lo!=start or hi!=end:
+            notes.append(f"{s['na']}: trigger interval clipped to recorded acquisition limits.")
+        rows.append([key,s['na'],'signal',lo,hi,s['sx'],s['sy'],s['sz']])
+    missing=[s['na'] for i,s in enumerate(spots) if i not in assignment]
+    if missing:
+        notes.append('No recorded trigger for: '+', '.join(missing)+'. Their signal remains in unassigned/background data; no coordinates were guessed.')
+    return pd.DataFrame(rows,columns=WINDOW_COLUMNS),notes
+
+
 @dataclass
 class Binned:
     start: np.ndarray
@@ -370,7 +423,7 @@ def diagnostics_frame(acq_id: str, bins: Binned) -> pd.DataFrame:
 
 
 def build_archives(groups, selected, read_fn, template, mapping, windows, target_ms, pixel_sum,
-                   image_name, timezone, output: Path, progress=None):
+                   image_name, timezone, output: Path, progress=None, window_fn=None):
     output.mkdir(parents=True,exist_ok=True)
     vit_path=output/'vitesse_export.vit'
     diag_path=output/'vitesse_diagnostics.zip'
@@ -396,7 +449,8 @@ def build_archives(groups, selected, read_fn, template, mapping, windows, target
                     reference_mz=acq.mz
                 elif acq.mz.shape!=reference_mz.shape or not np.allclose(acq.mz,reference_mz,atol=.05,rtol=0):
                     raise DataError(f'Channel masses differ in {key}. Export separately with a reviewed mapping.')
-                w=windows[windows['acquisition']==key]
+                w,notes=window_fn(acq,key) if window_fn else (windows[windows['acquisition']==key],[])
+                dz.writestr(f'group_{i}_intervals.csv',w.to_csv(index=False))
                 b=rebin(acq,w,target_ms,pixel_sum)
                 files=[]
                 for sample_name,kind,piece in named_parts(b,key):
@@ -411,7 +465,7 @@ def build_archives(groups, selected, read_fn, template, mapping, windows, target
                     file_counter+=1
                 dz.writestr(f'group_{i}_counts.csv',diagnostics_frame(key,b).to_csv(index=False))
                 dz.writestr(f'group_{i}_masses.csv',pd.DataFrame({'channel':[f'ch_{j:03d}' for j in range(len(acq.mz))],'calibrated_mz':acq.mz}).to_csv(index=False))
-                manifest['groups'].append({'acquisition':key,'csv_files':len(files),'samples':files,'native_rows':len(acq.start),'exported_rows':len(b.start),
+                manifest['groups'].append({'acquisition':key,'alignment_notes':notes,'csv_files':len(files),'samples':files,'native_rows':len(acq.start),'exported_rows':len(b.start),
                     'effective_regular_interval_ms':max(1,int(math.floor(target_ms/1000/acq.dwell+.5)))*acq.dwell*1000,
                     'unassigned_rows':b.kinds.count('unassigned'),'source_quality':acq.quality})
                 if progress:

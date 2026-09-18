@@ -81,5 +81,29 @@
       }
     ],
     "note": "Two manually assigned test intervals, five separate samples total; data and laser log identities and millisecond boundaries agree. No automated scientific spot assignment is implied."
+  },
+  "single_page_app": {
+    "core_tests_passed": 16,
+    "app_test_real_acquisition": true,
+    "trigger_offset_test_s": 0.15,
+    "export_csv_count": 7,
+    "count_conservation_verified": true,
+    "note": "Automatic association still cannot name single-shot spots with absent triggers."
+  },
+  "spatial_grid": {
+    "core_tests_passed": 19,
+    "tests": [
+      "same-cell distinct spots",
+      "revisits across acquisitions",
+      "negative coordinates",
+      "grid-origin shifts",
+      "exact boundaries",
+      "summed exposure excludes gaps",
+      "v7 header ordering",
+      "one measurement per cell",
+      "raw-data Streamlit preview and export"
+    ],
+    "real_data_test": "Three linked spots merged into one 500 x 5 um cell; companion timeline retained all integrations.",
+    "new_spatial_iolite_import_tested": false
   }
 }
