@@ -1,0 +1,85 @@
+{
+  "iolite_version": "4.10.12",
+  "date": "2026-09-18",
+  "time_resolved": {
+    "export_rows": 4773,
+    "imported_points": 4774,
+    "hf_values_match": true,
+    "relative_times_match": true,
+    "x_matches": true,
+    "y_matches": true,
+    "trailing_separator_nan": true,
+    "background_subtracted_flag": true
+  },
+  "pixel_sum": {
+    "export_rows": 4694,
+    "imported_points": 4695,
+    "hf_values_match": true,
+    "relative_times_match": true,
+    "x_matches": true,
+    "y_matches": true,
+    "trailing_separator_nan": true,
+    "background_subtracted_flag": true,
+    "isotope_columns_checked": 272,
+    "mismatched_columns": []
+  },
+  "preferences_changed": false,
+  "note": "File import validation only; isotope mapping and quantitative correction not validated.",
+  "named_spots": {
+    "data": [
+      {
+        "name": "Unassigned background - test - 1",
+        "start_ms": 1783034179286,
+        "end_ms": 1783034187286
+      },
+      {
+        "name": "915001-1",
+        "start_ms": 1783034187286,
+        "end_ms": 1783034188086
+      },
+      {
+        "name": "Unassigned background - test - 3",
+        "start_ms": 1783034188086,
+        "end_ms": 1783034196286
+      },
+      {
+        "name": "915001-10",
+        "start_ms": 1783034196286,
+        "end_ms": 1783034197785
+      },
+      {
+        "name": "Unassigned background - test - 5",
+        "start_ms": 1783034197785,
+        "end_ms": 1783034227566
+      }
+    ],
+    "logs": [
+      {
+        "name": "Unassigned background - test - 1",
+        "start_ms": 1783034179286,
+        "end_ms": 1783034187286
+      },
+      {
+        "name": "915001-1",
+        "start_ms": 1783034187286,
+        "end_ms": 1783034188086
+      },
+      {
+        "name": "Unassigned background - test - 3",
+        "start_ms": 1783034188086,
+        "end_ms": 1783034196286
+      },
+      {
+        "name": "915001-10",
+        "start_ms": 1783034196286,
+        "end_ms": 1783034197785
+      },
+      {
+        "name": "Unassigned background - test - 5",
+        "start_ms": 1783034197785,
+        "end_ms": 1783034227566
+      }
+    ],
+    "note": "Two manually assigned test intervals, five separate samples total; data and laser log identities and millisecond boundaries agree. No automated scientific spot assignment is implied."
+  }
+}
